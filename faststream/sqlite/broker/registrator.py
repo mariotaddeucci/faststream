@@ -42,6 +42,7 @@ class SQLiteRegistrator(Registrator[SQLiteRawMessage, SQLiteBrokerConfig]):
         title: str | None = None,
         description: str | None = None,
         include_in_schema: bool = True,
+        persistent: bool = True,
     ) -> "QueueSubscriber":
         """Create a subscriber for a SQLite queue."""
         subscriber = QueueSubscriber.create(
@@ -59,8 +60,19 @@ class SQLiteRegistrator(Registrator[SQLiteRawMessage, SQLiteBrokerConfig]):
             include_in_schema=include_in_schema,
         )
 
-        self._subscribers.append(subscriber)
-        return subscriber
+        self._subscribers.add(subscriber)
+        if persistent:
+            # Keep a strong reference
+            if not hasattr(self, '_persistent_subscribers'):
+                self._persistent_subscribers = []
+            self._persistent_subscribers.append(subscriber)
+        
+        return subscriber.add_call(
+            parser_=parser or self._parser,
+            decoder_=decoder or self._decoder,
+            dependencies_=dependencies,
+            middlewares_=middlewares,
+        )
 
     @override
     def publisher(
@@ -89,5 +101,5 @@ class SQLiteRegistrator(Registrator[SQLiteRawMessage, SQLiteBrokerConfig]):
             include_in_schema=include_in_schema,
         )
 
-        self._publishers.append(publisher)
+        self._publishers.add(publisher)
         return publisher

@@ -42,26 +42,42 @@ class SQLiteFastProducer(ProducerProto[SQLitePublishCommand]):
         )
         self.serializer = serializer
 
+    def connect(self, serializer: Optional["SerializerProto"]) -> None:
+        """Set the serializer for the producer."""
+        self.serializer = serializer
+
     @override
     async def publish(self, cmd: "SQLitePublishCommand") -> int:
         """Publish a message to a SQLite queue."""
         import json
 
-        msg = {
-            "body": cmd.body,
-            "headers": cmd.headers or {},
-            "reply_to": cmd.reply_to or "",
-            "correlation_id": cmd.correlation_id or "",
-        }
+        # Simple serialization - just convert body to JSON bytes
+        try:
+            if isinstance(cmd.body, bytes):
+                body_bytes = cmd.body
+            elif isinstance(cmd.body, str):
+                body_bytes = cmd.body.encode()
+            else:
+                # Serialize to JSON
+                body_bytes = json.dumps(cmd.body).encode()
+        except (TypeError, ValueError):
+            # If JSON serialization fails, convert to string
+            body_bytes = str(cmd.body).encode()
 
-        # Serialize the message
-        if self.serializer:
-            body_bytes = self.serializer.serialize(msg)
-        else:
-            body_bytes = json.dumps(msg).encode()
+        # Ensure queue table exists
+        queue = cmd.destination
+        await self._connection.client.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {queue} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data BLOB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await self._connection.client.commit()
 
         # Insert into queue table
-        queue = cmd.destination
         cursor = await self._connection.client.execute(
             f"INSERT INTO {queue} (data) VALUES (?)",
             (body_bytes,),

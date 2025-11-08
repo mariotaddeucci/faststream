@@ -30,6 +30,13 @@ class QueueSubscriber(SubscriberUsecase):
         specification: "SubscriberSpecification[Any, Any]",
         calls: "CallsCollection[Any]",
     ) -> None:
+        # Set parser and decoder before calling super().__init__
+        from faststream.sqlite.parser import SQLiteParser, SimpleParserConfig
+
+        parser = SQLiteParser(SimpleParserConfig())
+        config.parser = parser.parse_message
+        config.decoder = parser.decode_message
+
         super().__init__(config, specification, calls)
         self.config = config
         self.queue = config.queue
@@ -44,26 +51,27 @@ class QueueSubscriber(SubscriberUsecase):
         **kwargs: Any,
     ) -> "QueueSubscriber":
         """Create a queue subscriber."""
-        from faststream._internal.endpoint.subscriber.call_item import (
-            make_calls_collection,
-        )
+        from faststream._internal.endpoint.subscriber.call_item import CallsCollection
 
-        from .config import SQLiteSubscriberConfig
+        from .config import SQLiteSubscriberConfig, SQLiteSubscriberSpecificationConfig
 
         sub_config = SQLiteSubscriberConfig(
             queue=queue,
             _outer_config=config,
         )
 
-        spec = SubscriberSpecification(
-            extra_context=extra_context,
-            **kwargs,
+        spec_config = SQLiteSubscriberSpecificationConfig(
+            title_=kwargs.get("title"),
+            description_=kwargs.get("description"),
+            include_in_schema=kwargs.get("include_in_schema", True),
         )
 
-        calls = make_calls_collection(
-            func=None,
-            dependencies=kwargs.get("dependencies", ()),
-            middlewares=[],
+        calls = CallsCollection[Any]()
+
+        spec = SubscriberSpecification(
+            _outer_config=config,
+            specification_config=spec_config,
+            calls=calls,
         )
 
         return cls(config=sub_config, specification=spec, calls=calls)
@@ -139,5 +147,5 @@ class QueueSubscriber(SubscriberUsecase):
         """Get logging context."""
         return {
             "queue": self.queue,
-            "message_id": message.raw_message["message_id"] if message else None,
+            "message_id": message.raw_message["message_id"] if message else "",
         }

@@ -176,13 +176,15 @@ class SQLiteBroker(
         Returns:
             Message ID
         """
+        from faststream.response.publish_type import PublishType
+
         cmd = SQLitePublishCommand.from_cmd(
             SQLitePublishCommand(
                 message,
                 queue=queue,
                 headers=headers,
                 correlation_id=correlation_id,
-                _publish_type=self._producer.publish_type,
+                _publish_type=PublishType.PUBLISH,
             )
         )
 
