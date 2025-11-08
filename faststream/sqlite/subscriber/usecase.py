@@ -99,9 +99,12 @@ class QueueSubscriber(SubscriberUsecase):
 
         connection: ConnectionState = self.config._outer_config.connection
 
+        print(f"[DEBUG] Consumer loop started for queue: {self.queue}")
+        
         while True:
             try:
                 db: aiosqlite.Connection = connection.client
+                print(f"[DEBUG] Got DB connection")
 
                 # Ensure queue table exists
                 await db.execute(
@@ -114,30 +117,55 @@ class QueueSubscriber(SubscriberUsecase):
                     """
                 )
                 await db.commit()
+                print(f"[DEBUG] Table created/checked")
 
                 # Poll for messages
                 async with db.execute(
                     f"SELECT id, data FROM {self.queue} ORDER BY id LIMIT 1"
                 ) as cursor:
                     row = await cursor.fetchone()
+                    print(f"[DEBUG] Query result: {row}")
 
                 if row:
                     message_id, data = row
+                    print(f"[DEBUG] Processing message {message_id}")
                     msg: SQLiteRawMessage = {
                         "type": "queue",
                         "queue": self.queue,
                         "message_id": message_id,
                         "data": data,
                     }
-                    await self.consume(msg)
+                    
+                    try:
+                        result = await self.consume(msg)
+                        print(f"[DEBUG] Consume returned: {result}")
+                    except Exception as e:
+                        print(f"[DEBUG] Consume error: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        raise
+                    
+                    print(f"[DEBUG] Message consumed")
+                    
+                    # Delete the message from the queue after processing
+                    await db.execute(
+                        f"DELETE FROM {self.queue} WHERE id = ?",
+                        (message_id,),
+                    )
+                    await db.commit()
+                    print(f"[DEBUG] Message deleted")
                 else:
                     # No messages, wait a bit before polling again
                     await asyncio.sleep(0.1)
 
             except asyncio.CancelledError:
+                print(f"[DEBUG] Consumer loop cancelled")
                 raise
             except Exception as e:
                 # Log error and continue
+                print(f"[DEBUG] Error in consumer loop: {e}")
+                import traceback
+                traceback.print_exc()
                 await asyncio.sleep(1)
 
     def get_log_context(

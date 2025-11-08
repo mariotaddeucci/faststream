@@ -19,11 +19,17 @@ async def main():
     # Start the broker
     async with broker:
         print("Broker started, publishing messages...")
+        # Give the consumer task a chance to start
+        await asyncio.sleep(0.1)
+        
         # Publish some messages
         await broker.publish("Hello, SQLite!", queue="messages")
         print("Published message 1")
+        await asyncio.sleep(0.1)
+        
         await broker.publish("Another message", queue="messages")
         print("Published message 2")
+        await asyncio.sleep(0.1)
 
         # Give time for messages to be processed
         print("Waiting for messages to be processed...")
